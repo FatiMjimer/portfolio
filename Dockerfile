@@ -1,39 +1,35 @@
-FROM php:8.2-fpm
+FROM php:8.2-apache
 
-# Install system dependencies
+# Installer les extensions PHP nécessaires pour Laravel
 RUN apt-get update && apt-get install -y \
-    git \
-    unzip \
-    zip \
-    libpng-dev \
-    libonig-dev \
-    libxml2-dev \
-    curl
+    zip unzip git curl libonig-dev libxml2-dev \
+    libzip-dev libpng-dev libsqlite3-dev \
+    && docker-php-ext-install pdo pdo_mysql zip gd
 
-# Install Node.js 18
-RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
-    && apt-get install -y nodejs
+# Activer mod_rewrite Apache
+RUN a2enmod rewrite
 
-# Install Composer
-COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
-
-# Set working directory
-WORKDIR /app
-
-# Copy project files
+# Copier le projet dans le conteneur
+WORKDIR /var/www/html
 COPY . .
 
-# Install PHP dependencies
+# Installer Composer
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 RUN composer install --no-dev --optimize-autoloader
 
-# Install JS dependencies + build
-RUN npm install && npm run build
+# Build Vite (Frontend)
+RUN apt-get update && apt-get install -y nodejs npm
+RUN npm install
+RUN npm run build
 
-# Generate Laravel key
-RUN php artisan key:generate
+# Donner permissions au storage
+RUN chmod -R 777 storage bootstrap/cache
 
-# Expose port
-EXPOSE 8000
+# Apache document root vers public/
+ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
+RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf
+RUN sed -ri -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf
 
-# Start server
-CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]
+EXPOSE 80
+
+CMD ["apache2-foreground"]
