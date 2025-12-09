@@ -1,35 +1,39 @@
-# ---- Build PHP + Composer ----
-FROM dunglas/frankenphp:1.1-php8.2 AS php
+FROM php:8.2-fpm
 
-# Install composer
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    unzip \
+    zip \
+    libpng-dev \
+    libonig-dev \
+    libxml2-dev \
+    curl
+
+# Install Node.js 18
+RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
+    && apt-get install -y nodejs
+
+# Install Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
+# Set working directory
 WORKDIR /app
 
 # Copy project files
 COPY . .
 
-# Install dependencies
+# Install PHP dependencies
 RUN composer install --no-dev --optimize-autoloader
 
-# Build assets
-FROM node:18 AS node
-WORKDIR /app
-COPY . .
-RUN npm install
-RUN npm run build
+# Install JS dependencies + build
+RUN npm install && npm run build
 
-# ---- Final stage ----
-FROM dunglas/frankenphp:1.1-php8.2
+# Generate Laravel key
+RUN php artisan key:generate
 
-WORKDIR /app
+# Expose port
+EXPOSE 8000
 
-# Copy PHP build
-COPY --from=php /app /app
-
-# Copy built assets
-COPY --from=node /app/public/build /app/public/build
-
-CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8080"]
-
-EXPOSE 8080
+# Start server
+CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]
